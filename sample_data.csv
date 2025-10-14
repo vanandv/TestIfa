@@ -1,0 +1,4 @@
+timestamp,symbol,side,price,quantity,trader_id,account_id,desk,client_order_overlap,pnl_est
+2025-10-10T15:05:00Z,AAPL,BUY,183.25,2500,TRDR007,ACCT0101,EQ-Agency,1,120.5
+2025-10-10T15:07:00Z,AAPL,BUY,183.5,5200,TRDR007,ACCT0101,EQ-Agency,1,210.0
+2025-10-10T16:40:00Z,TSLA,SELL,251.9,1800,TRDR011,ACCT0042,EQ-Prop,0,-75.0
