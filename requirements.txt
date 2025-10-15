@@ -2,6 +2,9 @@ streamlit==1.38.0
 pandas==2.3.3
 numpy==1.26.4
 scikit-learn==1.4.2
-plotly==5.22.0
-python-dateutil==2.9.0.post0
+scipy>=1.6.0
+cython>=3.0.8
+setuptools
+wheel
+rich>=10.14.0
 --only-binary :all:
