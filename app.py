@@ -60,7 +60,6 @@ def generate_synth_trades(n=1500, start_date=None):
     side = ["BUY","SELL"]
 
     rows = []
-    # Simulate a "client order tape" and "news events"
     client_orders = []
     news_events = []
     for s in symbols:
@@ -71,7 +70,6 @@ def generate_synth_trades(n=1500, start_date=None):
                 "client_order_time": t,
                 "client_order_qty": np.random.randint(5_000, 50_000)
             })
-            # News either earnings or rating change
             if np.random.rand() < 0.5:
                 tnews = t - timedelta(hours=np.random.randint(1, 6)) if np.random.rand()<0.5 else t + timedelta(hours=np.random.randint(1, 6))
                 news_events.append({
@@ -97,7 +95,7 @@ def generate_synth_trades(n=1500, start_date=None):
             "trader_id": np.random.choice(traders),
             "account_id": np.random.choice(accounts),
             "desk": np.random.choice(desks),
-            "client_order_overlap": 0,  # will fill below
+            "client_order_overlap": 0,
             "pnl_est": np.random.normal(0, 300),
         }
         rows.append(row)
@@ -106,16 +104,19 @@ def generate_synth_trades(n=1500, start_date=None):
     client_df = pd.DataFrame(client_orders)
     news_df = pd.DataFrame(news_events)
 
-    # Feature engineering: overlap with client order time window (±15 min)
     trades["client_order_overlap"] = 0
     if not client_df.empty:
         for idx, co in client_df.iterrows():
-            mask = (trades["symbol"]==co["symbol"]) & (np.abs((trades["timestamp"] - co["client_order_time"]).dt.total_seconds()) <= 15*60)
+            mask = (trades["symbol"] == co["symbol"]) & (
+                np.abs((trades["timestamp"] - co["client_order_time"]).dt.total_seconds()) <= 15 * 60
+            )
             trades.loc[mask, "client_order_overlap"] = 1
-            # Inflate some suspicious quantities around overlap to simulate front-running
-            trades.loc[mask & (np.random.rand(mask.sum())>0.5), "quantity"] *= np.random.randint(2,5)
+            random_filter = pd.Series(
+                np.random.rand(mask.sum()) > 0.5,
+                index=trades[mask].index
+            )
+            trades.loc[mask & random_filter, "quantity"] *= np.random.randint(2, 5)
 
-    # Approximate market features per 5-min bucket
     trades["bucket"] = trades["timestamp"].dt.floor("5min")
     grp = trades.groupby(["symbol","bucket"])
     trades["bucket_vol"] = grp["quantity"].transform("sum")
@@ -123,7 +124,6 @@ def generate_synth_trades(n=1500, start_date=None):
     trades["avg_qty_symbol"] = trades.groupby("symbol")["quantity"].transform("mean")
     trades["qty_vs_avg"] = trades["quantity"] / (trades["avg_qty_symbol"] + 1e-9)
 
-    # News proximity (minutes) by nearest event per symbol
     trades["mins_to_news"] = np.nan
     if not news_df.empty:
         news_map = {s: news_df.loc[news_df["symbol"]==s, "news_time"].sort_values().to_list() for s in symbols}
@@ -133,29 +133,22 @@ def generate_synth_trades(n=1500, start_date=None):
             return min([abs((ts - nt).total_seconds())/60.0 for nt in news_map[sym]])
         trades["mins_to_news"] = trades.apply(lambda r: min_minutes_to_news(r["symbol"], r["timestamp"]), axis=1)
 
-    # Abnormal bucket volume z-score per symbol
     trades["bucket_vol_z"] = trades.groupby("symbol")["bucket_vol"].transform(lambda s: zscore(s))
 
-    # Price move proxy: simulate % change next 15min (for demo)
-    # Higher move if near "news"
     move = np.random.normal(0, 0.3, size=len(trades))
     near_news = (trades["mins_to_news"].fillna(999) <= 30).astype(float)
     move += near_news * np.random.normal(0.6, 0.4, size=len(trades))
     trades["ret_fwd_15m_pct"] = move
 
-    # Directional alignment heuristic: BUY before positive move, SELL before negative move
     trades["directional_align"] = np.where(
         ((trades["side"]=="BUY") & (trades["ret_fwd_15m_pct"]>0)) |
         ((trades["side"]=="SELL") & (trades["ret_fwd_15m_pct"]<0)), 1, 0
     )
 
-    # PnL uplift proxy
     trades["pnl_uplift"] = trades["quantity"] * trades["ret_fwd_15m_pct"] * trades["price"] * np.where(trades["side"]=="BUY", 1, -1)
     trades["pnl_uplift"] = trades["pnl_uplift"] + np.random.normal(0, 200, size=len(trades))
 
-    # Clean types
     return trades, client_df, news_df
-
 
 def engineer_features(df):
     """Compute additional features used by rules/ML."""
