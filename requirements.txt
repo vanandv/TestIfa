@@ -9,3 +9,5 @@ cython>=3.0.8
 setuptools
 wheel
 rich>=10.14.0
+plotly>=5.20.0
+python-dateutil
